@@ -129,7 +129,9 @@ docker logs ros_jazzy_container
 ## ROS 2 Topics
 
 부팅되면 `water_quality_node`와 `gps_node`가 함께 실행됩니다. 수질 데이터의
-기본 발행 주기는 5초이며, GPS 상태의 기본 발행 주기는 1초입니다.
+기본 발행 주기는 1초이며, GPS 상태의 기본 발행 주기도 1초입니다. 수온 센서가
+변환하는 동안 pH·DO·탁도 ADC를 교차 샘플링하고, 수온을 읽은 뒤 보정 계산하여
+기존 40회 샘플 평균을 유지하면서 측정 시간을 줄였습니다.
 
 ### 수질 토픽
 
@@ -142,6 +144,10 @@ docker logs ros_jazzy_container
 | `/water_quality/turbidity_voltage_v` | `std_msgs/msg/Float32` | V | 탁도 센서에서 측정하고 분압비를 보정한 전압입니다. 원시 상태 확인과 재보정에 사용합니다. |
 | `/water_quality/clarity_pct` | `std_msgs/msg/Float32` | 0~100% | 탁도 전압을 맑기 비율로 변환한 값입니다. 값이 클수록 맑은 물입니다. |
 | `/water_quality/clarity_level` | `std_msgs/msg/String` | 상태 문자열 | 맑기 비율을 사람이 읽기 쉬운 단계로 분류한 결과입니다. |
+
+전체 JSON의 `measurement_ms` 필드에서 MCU가 한 번의 수질 측정을 완료하는 데
+걸린 시간을 확인할 수 있습니다. 1초 발행을 안정적으로 유지하려면 이 값이
+일반적으로 1000ms보다 작아야 합니다.
 
 `/water_quality/clarity_level` 값은 다음과 같습니다.
 

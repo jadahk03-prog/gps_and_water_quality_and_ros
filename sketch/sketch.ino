@@ -297,20 +297,24 @@ bool findTemperatureSensor()
 }
 
 
-float readTemperatureC()
+bool startTemperatureConversion()
 {
   if (!temperatureSensorFound)
-    return NAN;
-
-  byte data[9];
+    return false;
 
   if (!oneWire.reset())
-    return NAN;
+    return false;
 
   oneWire.select(temperatureAddress);
   oneWire.write(0x44, 1);
 
-  waitWhileReadingGps(750);
+  return true;
+}
+
+
+float readTemperatureResult()
+{
+  byte data[9];
 
   if (!oneWire.reset())
     return NAN;
@@ -331,36 +335,83 @@ float readTemperatureC()
 }
 
 
-double readAverageADC(int pin)
+struct AdcAccumulator
 {
   uint32_t sum = 0;
-
   int minValue = 4095;
   int maxValue = 0;
+};
 
+
+void addAdcSample(
+  AdcAccumulator &accumulator,
+  int pin
+)
+{
+  // Discard one reading after changing ADC channels so the multiplexer
+  // and sample-and-hold circuit can settle.
   analogRead(pin);
-  delay(5);
+  delayMicroseconds(200);
 
+  int value = analogRead(pin);
+
+  accumulator.sum += value;
+
+  if (value < accumulator.minValue)
+    accumulator.minValue = value;
+
+  if (value > accumulator.maxValue)
+    accumulator.maxValue = value;
+}
+
+
+double trimmedAdcAverage(
+  const AdcAccumulator &accumulator
+)
+{
+  return (
+    (double)accumulator.sum -
+    accumulator.minValue -
+    accumulator.maxValue
+  ) / (SAMPLE_COUNT - 2);
+}
+
+
+void readWaterQualityInputs(
+  float &temperature,
+  double &phADC,
+  double &doADC,
+  double &turbidityADC
+)
+{
+  AdcAccumulator phSamples;
+  AdcAccumulator doSamples;
+  AdcAccumulator turbiditySamples;
+
+  unsigned long conversionStartedAt = millis();
+  bool temperatureConversionStarted =
+    startTemperatureConversion();
+
+  // Collect all three analog channels during the DS18B20 conversion.
+  // The channels are interleaved rather than waiting 800 ms per sensor.
   for (int i = 0; i < SAMPLE_COUNT; i++)
   {
-    int value = analogRead(pin);
-
-    sum += value;
-
-    if (value < minValue)
-      minValue = value;
-
-    if (value > maxValue)
-      maxValue = value;
-
-    waitWhileReadingGps(20);
+    addAdcSample(phSamples, PH_PIN);
+    addAdcSample(doSamples, DO_PIN);
+    addAdcSample(turbiditySamples, TURBIDITY_PIN);
+    waitWhileReadingGps(18);
   }
 
-  sum -= minValue;
-  sum -= maxValue;
+  unsigned long elapsed = millis() - conversionStartedAt;
+  if (temperatureConversionStarted && elapsed < 750)
+    waitWhileReadingGps(750 - elapsed);
 
-  return (double)sum /
-         (SAMPLE_COUNT - 2);
+  temperature = temperatureConversionStarted
+    ? readTemperatureResult()
+    : NAN;
+  phADC = trimmedAdcAverage(phSamples);
+  doADC = trimmedAdcAverage(doSamples);
+  turbidityADC = trimmedAdcAverage(turbiditySamples);
 }
 
 
@@ -518,12 +569,18 @@ String floatToJson(
 
 String get_water_quality()
 {
-  float temperature =
-    readTemperatureC();
+  unsigned long measurementStartedAt = millis();
+  float temperature;
+  double phADC;
+  double doADC;
+  double turbidityADC;
 
-
-  double phADC =
-    readAverageADC(PH_PIN);
+  readWaterQualityInputs(
+    temperature,
+    phADC,
+    doADC,
+    turbidityADC
+  );
 
   float phVoltage =
     adcToVoltage(phADC);
@@ -534,10 +591,6 @@ String get_water_quality()
       temperature
     );
 
-
-  double doADC =
-    readAverageADC(DO_PIN);
-
   float doVoltageMv =
     adcToMillivolts(doADC);
 
@@ -545,12 +598,6 @@ String get_water_quality()
     calculateDO(
       doVoltageMv,
       temperature
-    );
-
-
-  double turbidityADC =
-    readAverageADC(
-      TURBIDITY_PIN
     );
 
   float turbidityA0Voltage =
@@ -577,6 +624,9 @@ String get_water_quality()
 
   json += "\"ms\":";
   json += String(millis());
+
+  json += ",\"measurement_ms\":";
+  json += String(millis() - measurementStartedAt);
 
   json += ",\"temp_c\":";
   json += floatToJson(

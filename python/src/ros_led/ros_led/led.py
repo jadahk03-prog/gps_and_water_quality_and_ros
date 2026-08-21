@@ -75,7 +75,7 @@ class WaterQualityNode(Node):
         )
 
         self.timer = self.create_timer(
-            5.0,
+            1.0,
             self.read_water_quality
         )
 

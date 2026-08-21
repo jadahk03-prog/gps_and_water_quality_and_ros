@@ -2,22 +2,55 @@
 
 Arduino UNO Q에서 수질 센서값을 읽고 ROS 2 토픽으로 발행하는 프로젝트입니다.
 
-# 자동실행 설치 (최초 1회만)
-실행
-cd ~/ArduinoApps/sensor_gps
+## 설치 및 자동 실행
+
+Arduino UNO Q에서 저장소를 복제합니다.
+
+```bash
+cd ~/ArduinoApps
+
+git clone \
+  https://github.com/jadahk03-prog/gps_and_water_quality_and_ros.git \
+  sensor_gps
+
+cd sensor_gps
+```
+
+실행 권한을 설정하고 자동 실행 서비스를 설치합니다.
+
+```bash
 chmod +x run.sh start_water_quality.sh install_autostart.sh
 ./install_autostart.sh
+```
 
+자동 실행 서비스 상태를 확인합니다.
 
-ROS노드 확인
+```bash
+sudo systemctl status sensor-gps.service
+```
+
+Docker 컨테이너 상태와 로그를 확인합니다.
+
+```bash
+docker ps
+docker logs ros_jazzy_container
+```
+
+## ROS 2 노드 확인
+
+```bash
 docker exec ros_jazzy_container bash -lc \
   'source /opt/ros/jazzy/setup.bash &&
    source /ros2_ws/install/setup.bash &&
    ros2 node list'
+```
 
-정상이면
+정상적으로 실행되면 다음 노드가 표시됩니다.
+
+```text
 /gps_node
 /water_quality_node
+```
 
 ## Architecture
 

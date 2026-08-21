@@ -37,11 +37,19 @@ docker run -d \
     --restart unless-stopped \
     -e ROS_DOMAIN_ID=0 \
     -v /var/run/arduino-router.sock:/var/run/arduino-router.sock \
+    -v "$PROJECT_DIR/python/src:/ros2_ws/src" \
     "$IMAGE_NAME" \
     bash -c '
         source /opt/ros/jazzy/setup.bash
+        cd /ros2_ws
+        colcon build --symlink-install
         source /ros2_ws/install/setup.bash
-        exec ros2 run ros_led led
+        ros2 run ros_led led &
+        WATER_PID=$!
+        ros2 run ros_led gps &
+        GPS_PID=$!
+        trap "kill $WATER_PID $GPS_PID" TERM INT
+        wait -n $WATER_PID $GPS_PID
     '
 
 echo "[5] Water quality ROS started."

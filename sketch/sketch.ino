@@ -47,6 +47,179 @@ const uint16_t DO_TABLE[41] = {
    6410
 };
 
+// =================================================
+// NEO-M8N GPS (UART / NMEA-0183)
+// =================================================
+
+String gpsLine = "";
+bool gpsFix = false;
+bool gpsParserOk = false;
+uint8_t gpsSatellites = 0;
+double gpsLatitude = NAN;
+double gpsLongitude = NAN;
+unsigned long gpsBytesReceived = 0;
+unsigned long gpsSentencesReceived = 0;
+
+
+String nmeaField(
+  const String &line,
+  uint8_t fieldIndex
+)
+{
+  int start = 0;
+  uint8_t currentField = 0;
+
+  for (int i = 0; i <= line.length(); i++)
+  {
+    if (i == line.length() || line.charAt(i) == ',')
+    {
+      if (currentField == fieldIndex)
+        return line.substring(start, i);
+
+      start = i + 1;
+      currentField++;
+    }
+  }
+
+  return "";
+}
+
+
+bool isNmeaType(
+  const String &line,
+  const char *suffix
+)
+{
+  return line.length() >= 6 &&
+         line.charAt(0) == '$' &&
+         line.substring(3, 6) == suffix;
+}
+
+
+double nmeaCoordinateToDegrees(
+  const String &raw,
+  char hemisphere
+)
+{
+  if (raw.length() < 4)
+    return NAN;
+
+  double value = raw.toDouble();
+  int degrees = (int)(value / 100.0);
+  double minutes = value - degrees * 100.0;
+  double result = degrees + minutes / 60.0;
+
+  if (hemisphere == 'S' || hemisphere == 'W')
+    result = -result;
+
+  return result;
+}
+
+
+void parseNmeaLine(const String &line)
+{
+  // Accept GP, GN, and other valid NMEA talker IDs.
+  if (isNmeaType(line, "GGA"))
+  {
+    int fixQuality = nmeaField(line, 6).toInt();
+    gpsSatellites = (uint8_t)nmeaField(line, 7).toInt();
+
+    if (fixQuality == 0)
+      gpsFix = false;
+  }
+  else if (isNmeaType(line, "RMC"))
+  {
+    gpsFix = nmeaField(line, 2) == "A";
+
+    if (gpsFix)
+    {
+      String rawLat = nmeaField(line, 3);
+      String ns = nmeaField(line, 4);
+      String rawLon = nmeaField(line, 5);
+      String ew = nmeaField(line, 6);
+
+      gpsLatitude = nmeaCoordinateToDegrees(
+        rawLat,
+        ns.length() ? ns.charAt(0) : 'N'
+      );
+
+      gpsLongitude = nmeaCoordinateToDegrees(
+        rawLon,
+        ew.length() ? ew.charAt(0) : 'E'
+      );
+    }
+  }
+}
+
+
+void serviceGps()
+{
+  while (Serial1.available() > 0)
+  {
+    char c = Serial1.read();
+    gpsBytesReceived++;
+
+    if (c == '\n' || c == '\r')
+    {
+      if (gpsLine.length() > 0)
+      {
+        if (gpsLine.charAt(0) == '$')
+          gpsSentencesReceived++;
+
+        parseNmeaLine(gpsLine);
+        gpsLine = "";
+      }
+    }
+    else if (c >= 32 && c <= 126)
+    {
+      if (gpsLine.length() < 120)
+        gpsLine += c;
+      else
+        gpsLine = "";
+    }
+  }
+}
+
+
+void waitWhileReadingGps(unsigned long durationMs)
+{
+  unsigned long startedAt = millis();
+
+  while (millis() - startedAt < durationMs)
+  {
+    serviceGps();
+    delay(1);
+  }
+}
+
+
+bool runGpsParserSelfTest()
+{
+  bool savedFix = gpsFix;
+  uint8_t savedSatellites = gpsSatellites;
+  double savedLatitude = gpsLatitude;
+  double savedLongitude = gpsLongitude;
+
+  parseNmeaLine(
+    "$GNGGA,123519,3723.2475,N,12701.2345,E,1,08,0.9,10.0,M,0.0,M,,"
+  );
+  parseNmeaLine(
+    "$GNRMC,123519,A,3723.2475,N,12701.2345,E,0.0,0.0,010126,,,A"
+  );
+
+  bool passed = gpsFix &&
+                gpsSatellites == 8 &&
+                fabs(gpsLatitude - 37.3874583) < 0.00001 &&
+                fabs(gpsLongitude - 127.020575) < 0.00001;
+
+  gpsFix = savedFix;
+  gpsSatellites = savedSatellites;
+  gpsLatitude = savedLatitude;
+  gpsLongitude = savedLongitude;
+
+  return passed;
+}
+
 
 bool findTemperatureSensor()
 {
@@ -79,7 +252,7 @@ float readTemperatureC()
   oneWire.select(temperatureAddress);
   oneWire.write(0x44, 1);
 
-  delay(750);
+  waitWhileReadingGps(750);
 
   if (!oneWire.reset())
     return NAN;
@@ -122,7 +295,7 @@ double readAverageADC(int pin)
     if (value > maxValue)
       maxValue = value;
 
-    delay(20);
+    waitWhileReadingGps(20);
   }
 
   sum -= minValue;
@@ -391,8 +564,52 @@ String get_water_quality()
 }
 
 
+String get_gps()
+{
+  serviceGps();
+
+  String json = "{";
+
+  json += "\"ms\":";
+  json += String(millis());
+
+  json += ",\"parser_ok\":";
+  json += gpsParserOk ? "true" : "false";
+
+  json += ",\"fix\":";
+  json += gpsFix ? "true" : "false";
+
+  json += ",\"satellites\":";
+  json += String(gpsSatellites);
+
+  json += ",\"latitude\":";
+  if (gpsFix && !isnan(gpsLatitude))
+    json += String(gpsLatitude, 7);
+  else
+    json += "null";
+
+  json += ",\"longitude\":";
+  if (gpsFix && !isnan(gpsLongitude))
+    json += String(gpsLongitude, 7);
+  else
+    json += "null";
+
+  json += ",\"bytes\":";
+  json += String(gpsBytesReceived);
+
+  json += ",\"sentences\":";
+  json += String(gpsSentencesReceived);
+
+  json += "}";
+
+  return json;
+}
+
+
 void setup()
 {
+  Serial1.begin(9600);
+
   analogReadResolution(
     ADC_BITS
   );
@@ -400,15 +617,24 @@ void setup()
   temperatureSensorFound =
     findTemperatureSensor();
 
+  gpsParserOk =
+    runGpsParserSelfTest();
+
   Bridge.begin();
 
   Bridge.provide(
     "get_water_quality",
     get_water_quality
   );
+
+  Bridge.provide(
+    "get_gps",
+    get_gps
+  );
 }
 
 
 void loop()
 {
+  serviceGps();
 }

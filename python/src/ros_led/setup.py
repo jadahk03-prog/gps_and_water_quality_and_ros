@@ -24,7 +24,8 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            "led = ros_led.led:main"
+            "led = ros_led.led:main",
+            "gps = ros_led.gps:main",
         ],
     },
 )

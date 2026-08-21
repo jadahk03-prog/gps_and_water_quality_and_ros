@@ -59,6 +59,10 @@ double gpsLatitude = NAN;
 double gpsLongitude = NAN;
 unsigned long gpsBytesReceived = 0;
 unsigned long gpsSentencesReceived = 0;
+unsigned long gpsChecksumErrors = 0;
+unsigned long gpsLastSentenceMs = 0;
+
+#define GPS_FIX_TIMEOUT_MS 5000
 
 
 String nmeaField(
@@ -96,6 +100,27 @@ bool isNmeaType(
 }
 
 
+bool hasValidNmeaChecksum(const String &line)
+{
+  int separator = line.indexOf('*');
+
+  if (line.length() < 7 || line.charAt(0) != '$' ||
+      separator < 0 || separator + 2 >= line.length())
+    return false;
+
+  uint8_t calculated = 0;
+  for (int i = 1; i < separator; i++)
+    calculated ^= (uint8_t)line.charAt(i);
+
+  String checksumText = line.substring(separator + 1, separator + 3);
+  char *end = nullptr;
+  unsigned long received = strtoul(checksumText.c_str(), &end, 16);
+
+  return end != checksumText.c_str() && *end == '\0' &&
+         received <= 0xFF && calculated == (uint8_t)received;
+}
+
+
 double nmeaCoordinateToDegrees(
   const String &raw,
   char hemisphere
@@ -118,6 +143,14 @@ double nmeaCoordinateToDegrees(
 
 void parseNmeaLine(const String &line)
 {
+  if (!hasValidNmeaChecksum(line))
+  {
+    gpsChecksumErrors++;
+    return;
+  }
+
+  gpsLastSentenceMs = millis();
+
   // Accept GP, GN, and other valid NMEA talker IDs.
   if (isNmeaType(line, "GGA"))
   {
@@ -126,6 +159,23 @@ void parseNmeaLine(const String &line)
 
     if (fixQuality == 0)
       gpsFix = false;
+    else
+    {
+      String rawLat = nmeaField(line, 2);
+      String ns = nmeaField(line, 3);
+      String rawLon = nmeaField(line, 4);
+      String ew = nmeaField(line, 5);
+
+      gpsLatitude = nmeaCoordinateToDegrees(
+        rawLat,
+        ns.length() ? ns.charAt(0) : 'N'
+      );
+      gpsLongitude = nmeaCoordinateToDegrees(
+        rawLon,
+        ew.length() ? ew.charAt(0) : 'E'
+      );
+      gpsFix = !isnan(gpsLatitude) && !isnan(gpsLongitude);
+    }
   }
   else if (isNmeaType(line, "RMC"))
   {
@@ -178,6 +228,10 @@ void serviceGps()
         gpsLine = "";
     }
   }
+
+  if (gpsLastSentenceMs > 0 &&
+      millis() - gpsLastSentenceMs > GPS_FIX_TIMEOUT_MS)
+    gpsFix = false;
 }
 
 
@@ -199,12 +253,14 @@ bool runGpsParserSelfTest()
   uint8_t savedSatellites = gpsSatellites;
   double savedLatitude = gpsLatitude;
   double savedLongitude = gpsLongitude;
+  unsigned long savedLastSentenceMs = gpsLastSentenceMs;
+  unsigned long savedChecksumErrors = gpsChecksumErrors;
 
   parseNmeaLine(
-    "$GNGGA,123519,3723.2475,N,12701.2345,E,1,08,0.9,10.0,M,0.0,M,,"
+    "$GNGGA,123519,3723.2475,N,12701.2345,E,1,08,0.9,10.0,M,0.0,M,,*55"
   );
   parseNmeaLine(
-    "$GNRMC,123519,A,3723.2475,N,12701.2345,E,0.0,0.0,010126,,,A"
+    "$GNRMC,123519,A,3723.2475,N,12701.2345,E,0.0,0.0,010126,,,A*63"
   );
 
   bool passed = gpsFix &&
@@ -216,6 +272,8 @@ bool runGpsParserSelfTest()
   gpsSatellites = savedSatellites;
   gpsLatitude = savedLatitude;
   gpsLongitude = savedLongitude;
+  gpsLastSentenceMs = savedLastSentenceMs;
+  gpsChecksumErrors = savedChecksumErrors;
 
   return passed;
 }
@@ -599,6 +657,15 @@ String get_gps()
 
   json += ",\"sentences\":";
   json += String(gpsSentencesReceived);
+
+  json += ",\"checksum_errors\":";
+  json += String(gpsChecksumErrors);
+
+  json += ",\"last_sentence_age_ms\":";
+  if (gpsLastSentenceMs > 0)
+    json += String(millis() - gpsLastSentenceMs);
+  else
+    json += "null";
 
   json += "}";
 

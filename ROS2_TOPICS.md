@@ -35,7 +35,8 @@ GPS UART를 계속 읽어서 수신 버퍼가 넘치지 않도록 구성했다.
 ## 3. 수질 센서 ROS 2 노드
 
 - 노드 이름: `water_quality_node`
-- 실행 명령: `ros2 run ros_led led`
+- 실행 명령: `ros2 run ros_led water_quality`
+- 호환 명령: `ros2 run ros_led led`
 - MCU Bridge 함수: `get_water_quality`
 - 기본 발행 주기: 5초
 
@@ -135,7 +136,9 @@ GPS가 연결되지 않은 상태의 예시는 다음과 같다.
   "latitude": null,
   "longitude": null,
   "bytes": 0,
-  "sentences": 0
+  "sentences": 0,
+  "checksum_errors": 0,
+  "last_sentence_age_ms": null
 }
 ```
 
@@ -149,6 +152,11 @@ GPS가 연결되지 않은 상태의 예시는 다음과 같다.
 | `longitude` | 유효 Fix가 있을 때의 십진수 경도, 아니면 `null` |
 | `bytes` | `Serial1`에서 받은 누적 GPS 바이트 수 |
 | `sentences` | `$`로 시작하는 누적 NMEA 문장 수 |
+| `checksum_errors` | checksum이 없거나 일치하지 않아 폐기한 문장 수 |
+| `last_sentence_age_ms` | 마지막 정상 NMEA 문장 이후 시간(ms), 수신 전에는 `null` |
+
+NMEA checksum이 올바른 문장만 처리한다. 마지막 정상 문장을 받은 후 5초가
+지나면 이전 좌표를 계속 발행하지 않도록 Fix를 자동으로 해제한다.
 
 ### GPS 상태 판정
 
@@ -168,6 +176,21 @@ GPS가 연결되지 않은 상태의 예시는 다음과 같다.
 cd ~/ArduinoApps/ros_arduino_uno_Q
 ./start_water_quality.sh
 ```
+
+배터리 전원 인가 후 무인 자동 실행을 사용하려면 최초 한 번 systemd 서비스를
+설치한다.
+
+```bash
+cd ~/ArduinoApps/ros_arduino_uno_Q
+chmod +x install_autostart.sh
+./install_autostart.sh
+```
+
+`install_autostart.sh`에는 `sudo`를 직접 붙이지 않는다. 스크립트가 현재 UNO Q
+사용자를 서비스 실행 계정으로 저장하고, 필요한 설정 명령에만 `sudo`를 사용한다.
+
+이후에는 UNO Q가 부팅될 때 `sensor-gps.service`가 Docker를 기다린 다음 Arduino
+앱과 ROS 2 컨테이너를 시작한다.
 
 토픽 목록 확인:
 

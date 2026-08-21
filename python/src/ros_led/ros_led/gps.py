@@ -1,7 +1,7 @@
 import json
-import math
-
 from ros_led.app_utils import Bridge
+from ros_led.telemetry import bounded_integer
+from ros_led.telemetry import valid_coordinates
 
 import rclpy
 from rclpy.node import Node
@@ -44,16 +44,14 @@ class GpsNode(Node):
             self.get_logger().warning(f'GPS Bridge error: {error}')
             return
 
-        has_fix = bool(data.get('fix', False))
+        has_fix = data.get('fix') is True
 
         fix_state = Bool()
         fix_state.data = has_fix
         self.has_fix_pub.publish(fix_state)
 
         satellites = UInt8()
-        satellites.data = max(
-            0, min(255, int(data.get('satellites', 0)))
-        )
+        satellites.data = bounded_integer(data.get('satellites'), 0, 255)
         self.satellites_pub.publish(satellites)
 
         status = String()
@@ -64,12 +62,7 @@ class GpsNode(Node):
 
         latitude = data.get('latitude')
         longitude = data.get('longitude')
-        coordinates_valid = (
-            isinstance(latitude, (int, float))
-            and isinstance(longitude, (int, float))
-            and math.isfinite(float(latitude))
-            and math.isfinite(float(longitude))
-        )
+        coordinates_valid = valid_coordinates(latitude, longitude)
 
         if has_fix and coordinates_valid:
             message = NavSatFix()

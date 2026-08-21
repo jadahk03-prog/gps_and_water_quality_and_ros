@@ -1,7 +1,6 @@
-#!/usr/bin/bash
+#!/bin/bash
+set -euo pipefail
 
-arduino-app-cli app start user:ros_arduino_uno_Q
-
-docker build -t ros_jazzy_ws python/.
-
-docker run -it --net=host --name ros_jazzy_container -v $(pwd)/src:/workspace/src -v /var/run/arduino-router.sock:/var/run/arduino-router.sock ros_jazzy_ws
+# Backward-compatible manual launcher. The same startup path is used by systemd.
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+exec "$SCRIPT_DIR/start_water_quality.sh"

@@ -15,7 +15,7 @@ setup(
     zip_safe=True,
     maintainer='Miguel Angel Gonzalez Rodriguez',
     maintainer_email='miguel_gonzalezr@ieee.org',
-    description='ROS 2 Jazzy running in a container on the Arduino UNO Q to control the onboard LED via an RPC bridge between the Qualcomm MPU (Linux) and the STM32 microcontroller. A ROS 2 node subscribes to a boolean topic and triggers an RPC call to the MCU, enabling end-to-end ROS-native LED control on the UNO Q.',
+    description='ROS 2 nodes for water-quality sensors and GPS on Arduino UNO Q.',
     license='BSD 3-Clause',
     extras_require={
         'test': [
@@ -24,6 +24,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
+            "water_quality = ros_led.water_quality:main",
             "led = ros_led.led:main",
             "gps = ros_led.gps:main",
         ],

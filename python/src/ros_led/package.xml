@@ -3,7 +3,7 @@
 <package format="3">
   <name>ros_led</name>
   <version>1.0.0</version>
-  <description>ROS 2 Jazzy running in a container on the Arduino UNO Q to control the onboard LED via an RPC bridge between the Qualcomm MPU (Linux) and the STM32 microcontroller. A ROS 2 node subscribes to a boolean topic and triggers an RPC call to the MCU, enabling end-to-end ROS-native LED control on the UNO Q.</description>
+  <description>ROS 2 nodes for water-quality sensors and GPS on Arduino UNO Q.</description>
   <maintainer email="miguel_gonzalezr@ieee.org">Miguel Angel Gonzalez Rodriguez</maintainer>
   <license>BSD 3-Clause</license>
 

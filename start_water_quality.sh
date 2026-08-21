@@ -1,10 +1,17 @@
 #!/bin/bash
+set -euo pipefail
 
-PROJECT_DIR="/home/arduino/ArduinoApps/ros_arduino_uno_Q"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="${SENSOR_GPS_PROJECT_DIR:-$SCRIPT_DIR}"
 CONTAINER_NAME="ros_jazzy_container"
 IMAGE_NAME="ros_jazzy_ws"
 
-cd "$PROJECT_DIR" || exit 1
+cd "$PROJECT_DIR"
+
+if ! docker image inspect "$IMAGE_NAME" >/dev/null 2>&1; then
+    echo "[0] Docker image missing; building it..."
+    docker build -t "$IMAGE_NAME" "$PROJECT_DIR/python"
+fi
 
 echo "[1] Starting Arduino App..."
 arduino-app-cli app start user:ros_arduino_uno_Q
@@ -44,7 +51,7 @@ docker run -d \
         cd /ros2_ws
         colcon build --symlink-install
         source /ros2_ws/install/setup.bash
-        ros2 run ros_led led &
+        ros2 run ros_led water_quality &
         WATER_PID=$!
         ros2 run ros_led gps &
         GPS_PID=$!
@@ -52,4 +59,4 @@ docker run -d \
         wait -n $WATER_PID $GPS_PID
     '
 
-echo "[5] Water quality ROS started."
+echo "[5] Water quality and GPS ROS nodes started."

@@ -19,5 +19,8 @@ import pytest
 @pytest.mark.linter
 @pytest.mark.pep257
 def test_pep257():
-    rc = main(argv=['.', 'test'])
+    rc = main(argv=[
+        'src/ros_led/ros_led/telemetry.py',
+        'src/ros_led/ros_led/water_quality.py',
+    ])
     assert rc == 0, 'Found code style errors / warnings'

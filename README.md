@@ -2,6 +2,24 @@
 
 Arduino UNO Q에서 수질 센서값을 읽고 ROS 2 토픽으로 발행하는 프로젝트입니다.
 
+==================================================
+# 자동실행 설치 (최초 1회만)
+실행
+cd ~/ArduinoApps/sensor_gps
+chmod +x run.sh start_water_quality.sh install_autostart.sh
+./install_autostart.sh
+
+
+ROS노드 확인
+docker exec ros_jazzy_container bash -lc \
+  'source /opt/ros/jazzy/setup.bash &&
+   source /ros2_ws/install/setup.bash &&
+   ros2 node list'
+
+정상이면
+/gps_node
+/water_quality_node
+
 ## Architecture
 
 - STM32 MCU가 수온, pH, 용존산소(DO), 탁도 센서를 측정합니다.
